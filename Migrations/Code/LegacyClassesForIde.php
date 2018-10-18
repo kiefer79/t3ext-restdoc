@@ -24,16 +24,6 @@ class Tx_Restdoc_Hook_TableOfContents extends \Causal\Restdoc\Hooks\TableOfConte
 /**
  * @deprecated since 1.4 will be removed in 1.6
  */
-class Tx_Restdoc_Hook_TxDdgooglesitemapPages extends \Causal\Restdoc\Hooks\Ddgooglesitemap {}
-
-/**
- * @deprecated since 1.4 will be removed in 1.6
- */
-class Tx_Restdoc_Hook_RealurlAutoconf extends \Causal\Restdoc\Hooks\Realurl {}
-
-/**
- * @deprecated since 1.4 will be removed in 1.6
- */
 class Tx_Restdoc_Reader_SphinxJson extends \Causal\Restdoc\Reader\SphinxJson {}
 
 /**

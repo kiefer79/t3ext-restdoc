@@ -14,6 +14,7 @@
 
 namespace Causal\Restdoc\Controller\Pi1;
 
+use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use Causal\Restdoc\Utility\RestHelper;
 
@@ -57,7 +58,10 @@ class Pi1Controller extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin
 
     public function __construct()
     {
-        $this->settings = unserialize($GLOBALS['TYPO3_CONF_VARS']['EXT']['extConf'][$this->extKey]);
+        $this->settings = \TYPO3\CMS\Core\Utility\GeneralUtility::makeInstance(
+            \TYPO3\CMS\Core\Configuration\ExtensionConfiguration::class
+        )->get('restdoc');
+
         $this->pi_checkCHash = (bool)$this->settings['cache_plugin_output'];
         parent::__construct();
     }
@@ -204,7 +208,7 @@ class Pi1Controller extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin
         // Hook for post-processing the output
         if (is_array($GLOBALS['TYPO3_CONF_VARS']['EXTCONF'][$this->extKey]['renderHook'])) {
             foreach ($GLOBALS['TYPO3_CONF_VARS']['EXTCONF'][$this->extKey]['renderHook'] as $classRef) {
-                $hookObject = GeneralUtility::getUserObj($classRef);
+                $hookObject = GeneralUtility::makeInstance($classRef);
                 $params = array(
                     'mode' => $this->conf['mode'],
                     'documentRoot' => $documentRoot,
@@ -343,7 +347,10 @@ class Pi1Controller extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin
                 if (!empty($conf['excludeChapters'])) {
                     $excludeChapters = array_map(
                         function ($chapter) {
-                            return $this->getDatabaseConnection()->fullQuoteStr($chapter, 'tx_restdoc_toc');
+                            // return $this->getDatabaseConnection()->fullQuoteStr($chapter, 'tx_restdoc_toc');
+                            /** @var QueryBuilder */
+                            $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tx_restdoc_toc');
+                            return $queryBuilder->quoteIdentifier($chapter);
                         },
                         GeneralUtility::trimExplode(',', $conf['excludeChapters'])
                     );
@@ -356,15 +363,23 @@ class Pi1Controller extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin
                 }
                 // TODO: prefix root entries with the storage UID when using FAL, to prevent clashes with multiple
                 //       directories with similar names
-                $rows = $this->getDatabaseConnection()->exec_SELECTgetRows(
-                    '*',
-                    'tx_restdoc_toc',
-                    'root=' . $this->getDatabaseConnection()->fullQuoteStr(substr($documentRoot, strlen($basePath)), 'tx_restdoc_toc') .
-                    $extraWhere,
-                    '',
-                    $sortField . ' DESC',
-                    $limit
-                );
+                /** @var QueryBuilder */
+                $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tx_restdoc_toc');
+                $rows = $queryBuilder
+                    ->select('*')
+                    ->from('tx_restdoc_toc')
+                    ->where(
+                        $queryBuilder->expr()->eq(
+                            'root',
+                            $queryBuilder->quote(substr($documentRoot, strlen($basePath), \PDO::PARAM_STR))
+                        )
+                    )
+                    ->add('where', $extraWhere, true)
+                    ->orderBy($sortField, 'DESC')
+                    ->setMaxResults($limit)
+                    ->execute()
+                    ->fetchAll();
+
                 foreach ($rows as $row) {
                     $data[] = array(
                         'title' => $row['title'] ?: '[no title]',
@@ -378,7 +393,7 @@ class Pi1Controller extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin
         // Hook for post-processing the menu entries
         if (is_array($GLOBALS['TYPO3_CONF_VARS']['EXTCONF'][$this->extKey]['makeMenuArrayHook'])) {
             foreach ($GLOBALS['TYPO3_CONF_VARS']['EXTCONF'][$this->extKey]['makeMenuArrayHook'] as $classRef) {
-                $hookObject = GeneralUtility::getUserObj($classRef);
+                $hookObject = GeneralUtility::makeInstance($classRef);
                 $params = array(
                     'documentRoot' => $documentRoot,
                     'document' => $document,
@@ -516,7 +531,7 @@ JS;
         // Hook for post-processing the quick navigation
         if (is_array($GLOBALS['TYPO3_CONF_VARS']['EXTCONF'][$this->extKey]['quickNavigationHook'])) {
             foreach ($GLOBALS['TYPO3_CONF_VARS']['EXTCONF'][$this->extKey]['quickNavigationHook'] as $classRef) {
-                $hookObject = GeneralUtility::getUserObj($classRef);
+                $hookObject = GeneralUtility::makeInstance($classRef);
                 $params = array(
                     'documentRoot' => $documentRoot,
                     'document' => $document,
@@ -639,7 +654,7 @@ JS;
             $contentCategories[] = $contentCategory;
         }
 
-        $output = '<h1>' . $this->pi_getLL('index_title', 'Index', true) . '</h1>' . LF;
+        $output = '<h1>' . htmlspecialchars($this->pi_getLL('index_title', 'Index')) . '</h1>' . LF;
         $output .= '<div class="tx-restdoc-genindex-jumpbox">' . implode(' | ', $linksCategories) . '</div>' . LF;
         $output .= implode(LF, $contentCategories);
 
@@ -706,7 +721,7 @@ JS;
         // Hook for pre-processing the search form
         if (is_array($GLOBALS['TYPO3_CONF_VARS']['EXTCONF'][$this->extKey]['searchFormHook'])) {
             foreach ($GLOBALS['TYPO3_CONF_VARS']['EXTCONF'][$this->extKey]['searchFormHook'] as $classRef) {
-                $hookObject = GeneralUtility::getUserObj($classRef);
+                $hookObject = GeneralUtility::makeInstance($classRef);
                 $params = array(
                     'config' => &$config,
                     'pObj' => $this,
@@ -739,8 +754,8 @@ JS;
             if ($key === 'q') continue;
             $hiddenFields .= sprintf('<input type="hidden" name="%s" value="%s" />', $key, $value) . LF;
         }
-        $searchPlaceholder = $this->pi_getLL('search_placeholder', 'search', true);
-        $searchAction = $this->pi_getLL('search_action', 'search', true);
+        $searchPlaceholder = htmlspecialchars($this->pi_getLL('search_placeholder', 'search'));
+        $searchAction = htmlspecialchars($this->pi_getLL('search_action', 'search'));
 
         return <<<HTML
 <form action="$action" method="get">
@@ -993,23 +1008,16 @@ HTML;
             $basePath = 'EXT:' . $this->extKey . '/Resources/Private/Language/locallang.xlf';
 
             // Read the strings in the required charset (since TYPO3 4.2)
-            if (version_compare(TYPO3_version, '7.6', '>=')) {
-                /** @var $languageFactory \TYPO3\CMS\Core\Localization\LocalizationFactory */
-                $languageFactory = GeneralUtility::makeInstance(\TYPO3\CMS\Core\Localization\LocalizationFactory::class);
-                $this->LOCAL_LANG = $languageFactory->getParsedData($basePath, $this->LLkey, $GLOBALS['TSFE']->renderCharset);
-                if ($this->altLLkey) {
-                    $tempLOCAL_LANG = $languageFactory->getParsedData($basePath, $this->altLLkey);
-                    $this->LOCAL_LANG = array_merge(is_array($this->LOCAL_LANG) ? $this->LOCAL_LANG : array(), $tempLOCAL_LANG);
-                    unset($tempLOCAL_LANG);
-                }
-            } else {
-                $this->LOCAL_LANG = GeneralUtility::readLLfile($basePath, $this->LLkey, $GLOBALS['TSFE']->renderCharset);
-                if ($this->altLLkey) {
-                    $tempLOCAL_LANG = GeneralUtility::readLLfile($basePath, $this->altLLkey);
-                    $this->LOCAL_LANG = array_merge(is_array($this->LOCAL_LANG) ? $this->LOCAL_LANG : array(), $tempLOCAL_LANG);
-                    unset($tempLOCAL_LANG);
-                }
+
+            /** @var $languageFactory \TYPO3\CMS\Core\Localization\LocalizationFactory */
+            $languageFactory = GeneralUtility::makeInstance(\TYPO3\CMS\Core\Localization\LocalizationFactory::class);
+            $this->LOCAL_LANG = $languageFactory->getParsedData($basePath, $this->LLkey);
+            if ($this->altLLkey) {
+                $tempLOCAL_LANG = $languageFactory->getParsedData($basePath, $this->altLLkey);
+                $this->LOCAL_LANG = array_merge(is_array($this->LOCAL_LANG) ? $this->LOCAL_LANG : array(), $tempLOCAL_LANG);
+                unset($tempLOCAL_LANG);
             }
+
 
             // Overlaying labels from TypoScript (including fictitious language keys for non-system languages!):
             $confLL = $this->conf['_LOCAL_LANG.'];
@@ -1031,16 +1039,6 @@ HTML;
             }
         }
         $this->LOCAL_LANG_loaded = 1;
-    }
-
-    /**
-     * Returns the database connection.
-     *
-     * @return \TYPO3\CMS\Core\Database\DatabaseConnection
-     */
-    protected function getDatabaseConnection()
-    {
-        return $GLOBALS['TYPO3_DB'];
     }
 
 }

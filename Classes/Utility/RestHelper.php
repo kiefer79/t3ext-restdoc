@@ -41,7 +41,7 @@ final class RestHelper
         if (!is_dir($path)) {
             // Most probably a relative path has been provided
             $path = PATH_site . $path;
-            GeneralUtility::deprecationLog('EXT:restdoc - \\Causal\\Restdoc\\Utility\\RestHelper::getMetadata() needs an absolute path as argument since 1.3.0. Support for relative path will be removed in 1.5.0.');
+            trigger_error('EXT:restdoc - \\Causal\\Restdoc\\Utility\\RestHelper::getMetadata() needs an absolute path as argument since 1.3.0. Support for relative path will be removed in 1.5.0.', E_USER_DEPRECATED);
         }
         $documentRoot = rtrim($path, '/') . '/';
         $jsonFile = 'globalcontext.json';

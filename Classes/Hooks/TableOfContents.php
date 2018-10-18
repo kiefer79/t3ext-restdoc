@@ -14,6 +14,8 @@
 
 namespace Causal\Restdoc\Hooks;
 
+use TYPO3\CMS\Core\Database\ConnectionPool;
+use TYPO3\CMS\Core\Database\Query\QueryBuilder;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use Causal\Restdoc\Utility\RestHelper;
 
@@ -108,12 +110,25 @@ class TableOfContents
         $data = array(
             'tstamp' => $GLOBALS['ACCESS_TIME'],
         );
-        $cachedData = $this->getDatabaseConnection()->exec_SELECTgetSingleRow(
-            '*',
-            'tx_restdoc_toc',
-            'pid=' . $this->pageId .
-            ' AND document=' . $this->getDatabaseConnection()->fullQuoteStr($params['document'], 'tx_restdoc_toc')
-        );
+
+        /** @var QueryBuilder */
+        $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tx_restdoc_toc');
+        $cachedData = $queryBuilder
+            ->select('*')
+            ->from('tx_restdoc_toc')
+            ->where(
+                $queryBuilder->expr()->eq(
+                    'pid',
+                    $queryBuilder->quote($this->pageId, \PDO::PARAM_INT)
+                ),
+                $queryBuilder->expr()->eq(
+                    'document',
+                    $queryBuilder->quote($params['document'], \PDO::PARAM_STR)
+                )
+            )
+            ->execute()
+            ->fetchAll();
+
         $add = !is_array($cachedData);
         $refresh = (!$add && $cachedData['checksum'] !== $checksum);
         if ($add) {
@@ -154,17 +169,31 @@ class TableOfContents
         $data['crdate'] = $lastModification;
 
         if ($add) {
-            $this->getDatabaseConnection()->exec_INSERTquery(
-                'tx_restdoc_toc',
-                $data
-            );
+
+            /** @var QueryBuilder */
+            $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tx_restdoc_toc');
+            $queryBuilder
+                ->insert('tx_restdoc_toc')
+                ->values($data)
+                ->execute();
+
         } elseif ($refresh) {
-            $this->getDatabaseConnection()->exec_UPDATEquery(
-                'tx_restdoc_toc',
-                'pid=' . $this->pageId .
-                ' AND document=' . $this->getDatabaseConnection()->fullQuoteStr($params['document'], 'tx_restdoc_toc'),
-                $data
-            );
+
+            /** @var QueryBuilder */
+            $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tx_restdoc_toc');
+            $updateQuery = $queryBuilder
+                ->update('tx_restdoc_toc')
+                ->where(
+                    $queryBuilder->expr()->eq(
+                        'pid',
+                        $queryBuilder->quote($this->pageId, \PDO::PARAM_INT)
+                    )
+                );
+            foreach($data as $key => $value) {
+                $updateQuery->set($key, $queryBuilder->quote($value));
+            }
+            $updateQuery->execute();
+
         }
 
     }
@@ -305,22 +334,21 @@ class TableOfContents
      */
     protected function flushCache()
     {
-        $this->getDatabaseConnection()->exec_DELETEquery(
-            'tx_restdoc_toc',
-            'pid=' . $this->pageId .
-            ' AND (root<>' . $this->getDatabaseConnection()->fullQuoteStr($this->root, 'tx_restdoc_toc') .
-            ' OR tstamp<=' . ($GLOBALS['ACCESS_TIME'] - self::CACHE_MAX_AGE) . ')'
-        );
-    }
-
-    /**
-     * Returns the database connection.
-     *
-     * @return \TYPO3\CMS\Core\Database\DatabaseConnection
-     */
-    protected function getDatabaseConnection()
-    {
-        return $GLOBALS['TYPO3_DB'];
+        /** @var QueryBuilder */
+        $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tx_restdoc_toc');
+        $queryBuilder
+            ->delete('tx_restdoc_toc')
+            ->where(
+                $queryBuilder->expr()->eq('pid', $queryBuilder->quote($this->pageId, \PDO::PARAM_INT)),
+                $queryBuilder->expr()->orX(
+                    $queryBuilder->expr()->neq('root', $queryBuilder->quoteIdentifier('tx_restdoc_toc')),
+                    $queryBuilder->expr()->lte(
+                        'tstamp',
+                        $queryBuilder->quote(($GLOBALS['ACCESS_TIME'] - self::CACHE_MAX_AGE), \PDO::PARAM_INT)
+                    )
+                )
+            )
+            ->execute();
     }
 
 }

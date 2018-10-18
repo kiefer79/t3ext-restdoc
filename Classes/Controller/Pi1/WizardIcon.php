@@ -16,6 +16,8 @@ namespace Causal\Restdoc\Controller\Pi1;
 
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
+use TYPO3\CMS\Extbase\Utility\DebuggerUtility;
+use TYPO3\CMS\Frontend\Controller\TypoScriptFrontendController;
 
 /**
  * Class that adds the wizard icon.
@@ -38,6 +40,7 @@ class WizardIcon
      */
     public function proc(array $wizardItems)
     {
+
         $LL = $this->includeLocalLang();
         $wizardIcon = 'Resources/Public/Icons/pi1_ce_wizard.png';
 
@@ -57,7 +60,7 @@ class WizardIcon
             );
             $wizardItem['iconIdentifier'] = 'extensions-restdoc-wizard';
         } else {
-            $wizardItem['icon'] = ExtensionManagementUtility::extRelPath('restdoc') . $wizardIcon;
+            $wizardItem['icon'] = ExtensionManagementUtility::extPath('restdoc') . $wizardIcon;
         }
 
         $wizardItems['plugins_tx_restdoc_pi1'] = $wizardItem;
